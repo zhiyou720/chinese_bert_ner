@@ -127,3 +127,6 @@ CMakeCache.txt
 bk/
 data/raw/
 .idea/
+punc_model/
+data/
+seg_model

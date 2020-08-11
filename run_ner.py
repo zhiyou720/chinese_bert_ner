@@ -97,7 +97,7 @@ def readfile(filename):
     """
     read file
     """
-    f = open(filename)
+    f = open(filename, encoding='utf-8')
     data = []
     sentence = []
     label = []
@@ -159,7 +159,19 @@ class NerProcessor(DataProcessor):
             self._read_tsv(os.path.join(data_dir, "test.txt")), "test")
 
     def get_labels(self):
-        return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "[CLS]", "[SEP]"]
+        # return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "[CLS]", "[SEP]"]
+        # TODO: define label
+        # puncs = ['，', '。', '？', ',', '.', '\?', "、", '》', '《', '；', '：', ';', ':', '‘', '“', "\"", "'",
+        #          '【', '】', '{', '}', '…', '\|', '~', '·', '！', '\!', '/', '「', '」', '（', '）', '〔', '〕',
+        #          '\(', '\)', '\[', '\]', '#other#']
+        from utils.dataio import load_txt_data
+        puncs = [x.split('\t')[1] for x in load_txt_data('./utils/config/punctuation.dat')]
+        segs = [x.split('\t')[1] for x in load_txt_data('./utils/config/segmentation.dat')]
+        # puncs = puncs + [x + '#end#' for x in puncs] + ["[CLS]", "[SEP]"]
+        puncs += ["[CLS]", "[SEP]"]
+        segs += ["[CLS]", "[SEP]"]
+        return puncs
+        # return segs
 
     def _create_examples(self, lines, set_type):
         examples = []
@@ -178,7 +190,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
     label_map = {label: i for i, label in enumerate(label_list, 1)}
 
     features = []
-    for (ex_index, example) in enumerate(examples):
+    for (ex_index, example) in tqdm(enumerate(examples), desc='convert features, total: {}'.format(len(examples))):
         textlist = example.text_a.split(' ')
         labellist = example.label
         tokens = []
@@ -241,13 +253,11 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
         if ex_index < 5:
             logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join(
-                [str(x) for x in tokens]))
+            logger.info("guid: %s" % example.guid)
+            logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
             logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
             logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-            logger.info(
-                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+            logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             # logger.info("label: %s (id = %d)" % (example.label, label_ids))
 
         features.append(
@@ -290,7 +300,7 @@ def main():
                         type=str,
                         help="Where do you want to store the pre-trained models downloaded from s3")
     parser.add_argument("--max_seq_length",
-                        default=128,
+                        default=387,
                         type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
@@ -308,7 +318,7 @@ def main():
                         action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--train_batch_size",
-                        default=32,
+                        default=6,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
@@ -429,9 +439,7 @@ def main():
 
     # Prepare model
     config = BertConfig.from_pretrained(args.bert_model, num_labels=num_labels, finetuning_task=args.task_name)
-    model = Ner.from_pretrained(args.bert_model,
-                                from_tf=False,
-                                config=config)
+    model = Ner.from_pretrained(args.bert_model, from_tf=False, config=config)
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
@@ -469,8 +477,7 @@ def main():
     tr_loss = 0
     label_map = {i: label for i, label in enumerate(label_list, 1)}
     if args.do_train:
-        train_features = convert_examples_to_features(
-            train_examples, label_list, args.max_seq_length, tokenizer)
+        train_features = convert_examples_to_features(train_examples, label_list, args.max_seq_length, tokenizer)
         logger.info("***** Running training *****")
         logger.info("  Num examples = %d", len(train_examples))
         logger.info("  Batch size = %d", args.train_batch_size)
@@ -488,6 +495,13 @@ def main():
         else:
             train_sampler = DistributedSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
+
+        # def inplace_relu(m):
+        #     classname = m.__class__.__name__
+        #     if classname.find('ReLU') != -1:
+        #         m.inplace = True
+        #
+        # model.apply(inplace_relu)
 
         model.train()
         for _ in trange(int(args.num_train_epochs), desc="Epoch"):
@@ -606,3 +620,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# python run_ner.py --data_dir=data/ --bert_model=bert-base-multilingual-cased --task_name=ner --output_dir=out_base --max_seq_length=128 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1

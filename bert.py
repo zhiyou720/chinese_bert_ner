@@ -1,22 +1,16 @@
 """BERT NER Inference."""
-
-from __future__ import absolute_import, division, print_function
-
 import json
 import os
 
 import torch
 import torch.nn.functional as F
 from nltk import word_tokenize
-import nltk
-from pytorch_transformers import (BertConfig, BertForTokenClassification,
-                                  BertTokenizer)
-# nltk.download()
+from pytorch_transformers import BertConfig, BertForTokenClassification, BertTokenizer
 
 
 class BertNer(BertForTokenClassification):
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, valid_ids=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None, valid_ids=None, **kwargs):
         sequence_output = self.bert(input_ids, token_type_ids, attention_mask, head_mask=None)[0]
         batch_size, max_len, feat_dim = sequence_output.shape
         valid_output = torch.zeros(batch_size, max_len, feat_dim, dtype=torch.float32,
@@ -68,10 +62,10 @@ class Ner:
     def preprocess(self, text: str):
         """ preprocess """
         tokens, valid_positions = self.tokenize(text)
-        ## insert "[CLS]"
+        # insert "[CLS]"
         tokens.insert(0, "[CLS]")
         valid_positions.insert(0, 1)
-        ## insert "[SEP]"
+        # insert "[SEP]"
         tokens.append("[SEP]")
         valid_positions.append(1)
         segment_ids = []
