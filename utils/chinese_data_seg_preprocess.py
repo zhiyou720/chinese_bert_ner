@@ -7,7 +7,15 @@ from utils.dataio import load_txt_data, save_txt_file, load_file_name
 
 
 class SegmentationData(object):
-    def __init__(self, raw_path, punc_conf_path, seg_conf_path, seed=12):
+    def __init__(self, raw_path, punc_conf_path, seg_conf_path, seed=12, max_num=200000):
+        """
+
+        :param raw_path:
+        :param punc_conf_path:
+        :param seg_conf_path:
+        :param seed:
+        :param max_num: maximum paragraph number in one file
+        """
 
         random.seed(seed)
 
@@ -24,78 +32,32 @@ class SegmentationData(object):
 
         self.sentence_end_symbol = list("。！？?!")
 
+        self.max_num = max_num
+
         self.max_sentence_in_paragraph = 8
-        self.max_char_in_sentence = 64
+        self.max_char_in_sentence = 128
+        self.min_char_in_paragraph = 64
         self.max_char_in_paragraph = 128
         self.max_char_in_batch = 512
 
-        # self.punc_labels = [x.split('\t')[0] for x in load_txt_data(punc_conf_path)]
-        self.puncs = [x.split('\t')[1] for x in load_txt_data(punc_conf_path)]
-        self.puncs_pattern = ['\\' + x.split('\t')[1] for x in load_txt_data(punc_conf_path)]
-        # self.punc_label_dict = dict(zip(self.puncs, self.punc_labels))
-        # self.label_punc_dict = dict(zip(self.punc_labels, self.puncs))
+        self.puncs = set([x for x in load_txt_data(punc_conf_path)])  # TODO: 用set数据结构
+        self.puncs_pattern = ['\\' + x for x in self.puncs]
 
         self.segment_labels = [x.split('\t')[0] for x in load_txt_data(seg_conf_path)]
         self.segment_symbol = [x.split('\t')[1] for x in load_txt_data(seg_conf_path)]
         self.segment_label_symbol_dict = dict(zip(self.segment_labels, self.segment_symbol))
-        # self.segment_symbol_label_dict = dict(zip(self.segment_symbol, self.segment_labels))
 
         self.place_holder = 'b'
 
-        self.raw_data = []
-        self.read_file(self.book_list)
+        self.raw_data = self.read_file(self.book_list)
+
         self.raw_data = self.format_data()
         self.punc_data = self.tag_punc_data()
         # self.seg_data = self.tag_seg_data()
 
-    def format_puncs_space(self, sentence):
-        for punc in self.puncs_pattern:
-            _punc1 = ' ' + punc
-            _punc2 = punc + ' '
-            while _punc1 in sentence:
-                sentence = re.sub(_punc1, punc, sentence)
-
-            while _punc2 in sentence:
-                sentence = re.sub(_punc2, punc, sentence)
-
-        return sentence
-
-    def split_paragraph(self, paragraph):
-        """
-
-        :param paragraph: str
-        :return:
-        :rtype: list: ['s1', 's2', 's3',]
-        """
-        i = 0
-        j = 0
-        new_paragraph = []
-        while i < len(paragraph):
-            if paragraph[i] in self.sentence_end_symbol:
-                new_paragraph.append(paragraph[j:i + 1])
-                j = i + 1
-            i += 1
-        if not new_paragraph:
-            new_paragraph = [paragraph]
-
-        return new_paragraph
-
-    def remove_none_puncs_paragraph(self, paragraph):
-        """
-        :param paragraph: str
-        :return: str
-        """
-        new_paragraph = None
-        for punc in self.puncs:
-
-            if punc in paragraph:
-                new_paragraph = paragraph
-                break
-
-        return new_paragraph
-
     def read_file(self, file_names):
         """
+        读取文档并筛选优质数据
         :param file_names:
         :return:
 
@@ -104,19 +66,28 @@ class SegmentationData(object):
                     ["sentence1", "sentence2", "sentence3"],
                     ]
         """
+        res = []
 
         for file_name in file_names:
-            raw = load_txt_data(self.dir + file_name, origin=True)[:200000]
+            raw = load_txt_data(self.dir + file_name, origin=True)[:self.max_num]
+            # raw = load_txt_data(self.dir + file_name, origin=True)[-50:]
+
             for i in trange(len(raw), desc='Load {}'.format(file_name)):
                 paragraph: str = raw[i].strip()
-                paragraph: str = self.remove_none_puncs_paragraph(paragraph)
-                if paragraph:
-                    paragraph: str = re.sub('\\u3000', ':', paragraph)
-                    paragraph: str = self.format_puncs_space(paragraph)
-                    paragraph: list = self.split_paragraph(paragraph)
-                    self.raw_data.append(paragraph)
-
-        self.logger.info("  Num paragraph = %d", len(self.raw_data))
+                paragraph_char_num = self.count_info(paragraph)
+                if self.min_char_in_paragraph < paragraph_char_num < self.max_char_in_paragraph:  # 筛选字数范围内段落
+                    paragraph: str = self.remove_none_puncs_paragraph(paragraph)
+                    if paragraph:
+                        paragraph: str = re.sub('\\u3000', ':', paragraph)
+                        paragraph: str = self.format_puncs_space(paragraph)
+                        paragraph: list = self.split_paragraph(paragraph)
+                        paragraph: list = [x for x in paragraph if len(x) <= self.max_char_in_sentence]
+                        res.append(paragraph)
+        import random
+        random.seed(1024)
+        random.shuffle(res)
+        self.logger.info("  Num paragraph = %d", len(res))
+        return res
 
     def format_data(self):
         data = []
@@ -127,15 +98,43 @@ class SegmentationData(object):
             if len(paragraph) > self.max_sentence_in_paragraph:
                 continue
             flag = True
+            tmp = ''.join(paragraph)
+            if len(tmp) > 256:
+                continue
             for j in range(len(paragraph)):
                 if len(paragraph[j]) > self.max_char_in_sentence:
                     flag = False
             if not flag:
                 continue
-            max_len = max(max_len, len(''.join(paragraph)))
+            max_len = max(max_len, len(tmp))
             data.append(paragraph)
         print(max_len)
         return data
+
+    @staticmethod
+    def tokenizer(string):
+        english = 'abcdefghijklmnopqrstuvwxyz0123456789'
+        output = []
+        buffer = ''
+        for s in string:
+            if s in english or s in english.upper():
+                buffer += s
+            else:
+                if buffer:
+                    output.append(buffer)
+                buffer = ''
+                output.append(s)
+        if buffer:
+            output.append(buffer)
+        return output
+
+    @staticmethod
+    def permutation(s, n):
+        from itertools import permutations
+        result = []
+        for i in permutations(s, n):
+            result.append("".join(i))
+        return result
 
     def tag_punc_data(self):
 
@@ -145,9 +144,19 @@ class SegmentationData(object):
             section = self.place_holder + ''.join(self.raw_data[i])
             j = 0
             sub_punc_data, sub_punc_label = [], []
+
+            section = self.tokenizer(section)
+
             while j < len(section):
                 if section[j] in self.puncs:
-                    sub_punc_label[-1] = section[j]
+                    if j < len(section) - 1:
+                        if section[j] + section[j + 1] in self.puncs:
+                            sub_punc_label[-1] = section[j] + section[j + 1]
+                            j += 1
+                        else:
+                            sub_punc_label[-1] = section[j]
+                    else:
+                        sub_punc_label[-1] = section[j]
                 else:
                     sub_punc_data.append(section[j])
                     sub_punc_label.append('word')
@@ -268,6 +277,63 @@ class SegmentationData(object):
         print(batch_num)
         return _res
 
+    def format_puncs_space(self, sentence):
+        for punc in self.puncs_pattern:
+            _punc1 = ' ' + punc
+            _punc2 = punc + ' '
+            while _punc1 in sentence:
+                sentence = re.sub(_punc1, punc, sentence)
+
+            while _punc2 in sentence:
+                sentence = re.sub(_punc2, punc, sentence)
+
+        return sentence
+
+    def split_paragraph(self, paragraph):
+        """
+
+        :param paragraph: str
+        :return:
+        :rtype: list: ['sent1', 's2', 's3',]
+        """
+        i = 0
+        j = 0
+        new_paragraph = []
+        while i < len(paragraph):
+            if paragraph[i] in self.sentence_end_symbol:
+                new_paragraph.append(paragraph[j:i + 1])
+                j = i + 1
+            i += 1
+        if not new_paragraph:
+            new_paragraph = [paragraph]
+
+        return new_paragraph
+
+    def remove_none_puncs_paragraph(self, paragraph):
+        """
+        :param paragraph: str
+        :return: str
+        """
+        new_paragraph = None
+        for punc in self.puncs:
+            if punc in paragraph:
+                new_paragraph = paragraph
+                break
+
+        return new_paragraph
+
+    def count_info(self, data):
+        """
+        返回有用的文字数量
+        :param data:
+        :return:
+        """
+        i = 0
+        for char in data:
+            if char not in self.puncs:
+                i += 1
+        return i
+
 
 if __name__ == '__main__':
     _a = SegmentationData('../data/segmentation_corpus/raw/', '../utils/config/punctuation.dat',
@@ -278,5 +344,6 @@ if __name__ == '__main__':
     #     pass
     # print(len(_a.raw_data))
     # print(_a.max_seq)
-    save_txt_file(_a.punc_data, '../data/segmentation_corpus/punc_data.train.txt')
+    _punc_data = _a.punc_data
+    save_txt_file(_punc_data, '../data/segmentation_corpus/punc_data.train.txt')
     # save_txt_file(_a.seg_data, '../data/segmentation_corpus/segment_data.train.txt', end='')

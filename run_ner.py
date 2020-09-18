@@ -165,7 +165,7 @@ class NerProcessor(DataProcessor):
         #          '【', '】', '{', '}', '…', '\|', '~', '·', '！', '\!', '/', '「', '」', '（', '）', '〔', '〕',
         #          '\(', '\)', '\[', '\]', '#other#']
         from utils.dataio import load_txt_data
-        puncs = [x.split('\t')[1] for x in load_txt_data('./utils/config/punctuation.dat')]
+        puncs = [x for x in load_txt_data('./utils/config/punctuation.dat')]
         segs = [x.split('\t')[1] for x in load_txt_data('./utils/config/segmentation.dat')]
         # puncs = puncs + [x + '#end#' for x in puncs] + ["[CLS]", "[SEP]"]
         puncs += ["[CLS]", "[SEP]"]
@@ -300,7 +300,7 @@ def main():
                         type=str,
                         help="Where do you want to store the pre-trained models downloaded from s3")
     parser.add_argument("--max_seq_length",
-                        default=387,
+                        default=128,
                         type=int,
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
@@ -318,7 +318,7 @@ def main():
                         action='store_true',
                         help="Set this flag if you are using an uncased model.")
     parser.add_argument("--train_batch_size",
-                        default=6,
+                        default=32,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
@@ -533,16 +533,16 @@ def main():
                     model.zero_grad()
                     global_step += 1
 
-        # Save a trained model and the associated configuration
-        model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
-        model_to_save.save_pretrained(args.output_dir)
-        tokenizer.save_pretrained(args.output_dir)
-        label_map = {i: label for i, label in enumerate(label_list, 1)}
-        model_config = {"bert_model": args.bert_model, "do_lower": args.do_lower_case,
-                        "max_seq_length": args.max_seq_length, "num_labels": len(label_list) + 1,
-                        "label_map": label_map}
-        json.dump(model_config, open(os.path.join(args.output_dir, "model_config.json"), "w"))
-        # Load a trained model and config that you have fine-tuned
+            # Save a trained model and the associated configuration
+            model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
+            model_to_save.save_pretrained(args.output_dir)
+            tokenizer.save_pretrained(args.output_dir)
+            label_map = {i: label for i, label in enumerate(label_list, 1)}
+            model_config = {"bert_model": args.bert_model, "do_lower": args.do_lower_case,
+                            "max_seq_length": args.max_seq_length, "num_labels": len(label_list) + 1,
+                            "label_map": label_map}
+            json.dump(model_config, open(os.path.join(args.output_dir, "model_config.json"), "w"))
+            # Load a trained model and config that you have fine-tuned
     else:
         # Load a trained model and vocabulary that you have fine-tuned
         model = Ner.from_pretrained(args.output_dir)
