@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python run_ner.py --data_dir=data/ --bert_model=bert-base-multilingual-cased --task_name=ner --output_dir=out_base_test --max_seq_length=128 --do_train --num_train_epochs 5 --do_eval --warmup_proportion=0.1
