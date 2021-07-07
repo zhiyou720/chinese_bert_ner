@@ -8,9 +8,9 @@ import os
 import torch
 import torch.nn.functional as F
 from nltk import word_tokenize
-import nltk
 from pytorch_transformers import (BertConfig, BertForTokenClassification,
                                   BertTokenizer)
+# import nltk
 # nltk.download()
 
 
