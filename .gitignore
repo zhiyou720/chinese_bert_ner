@@ -115,9 +115,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-out*/
 .vscode/
-out*
 libtorch/*
 cpp-app/CMakeFiles/*
 base/*
@@ -126,5 +124,11 @@ Makefile
 CMakeCache.txt
 !cmake.png
 bk/
-data/raw/
 .idea/
+/out_base/added_tokens.json
+/out_base/config.json
+/out_base/model_config.json
+/out_base/pytorch_model.bin
+/out_base/tokenizer_config.json
+/out_base/special_tokens_map.json
+/out_base/vocab.txt
